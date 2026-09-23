@@ -7,10 +7,13 @@
 
 ## 현재 상태 (마지막 업데이트: 2026-09-23)
 
-- **완료된 마지막 STEP**: STEP 17 (GitHub Actions 수동 실행) — `.github/workflows/ax-job-agent.yml`(workflow_dispatch, dry_run 입력) 작성, dry_run·실제 실행 모두 성공 (실제 실행 run 35836468808)
-- **지금 하고 있는 것**: 없음 (STEP 18 시작 대기)
-- **다음에 할 일**: STEP 18 (주 1회 cron 스케줄 추가, 예: 매주 월요일 09:00 KST = UTC `0 0 * * 1`)
-  - 참고: 실제 실행(dry_run=false, run 35836468808)은 성공했지만 신규 0건이라 Gemini 요약·보고서·Gmail/Slack 발송·jobs_history.csv 커밋은 일어나지 않았다. STEP 16에서 결정한 대로, 신규 공고가 실제로 나타나는 다음 주간 실행에서 전체 발송 경로(Gemini → 보고서 → Gmail/Slack → history 봇 커밋)가 자연스럽게 검증될 예정이다.
+- **완료된 마지막 STEP**: STEP 18 (GitHub Actions 주간 실행) — 매주 월요일 09:00 KST(UTC `0 0 * * 1`) cron 추가, main에서 active 확인. 전체 18단계 구현 완료
+- **지금 하고 있는 것**: 없음 (첫 자동 실행 대기)
+- **다음에 할 일**: **첫 자동 실행 결과 확인 — 2026-09-28(월) 09:00 KST 예정** (GitHub 부하에 따라 몇 분~수십 분 늦게 시작될 수 있음)
+  - 확인할 것: Actions 실행 성공 여부, job_id 매칭 실패 건수, 신규 건수. 신규가 있으면 Gemini 요약·보고서·Gmail·Slack 발송과 `github-actions[bot]`의 jobs_history.csv 커밋(main 브랜치)까지.
+  - 참고: 지금까지 실제 실행(run 35836468808 등)은 모두 신규 0건이라 발송·history 커밋이 없었다. STEP 16에서 결정한 대로, 신규 공고가 실제로 나타나는 주간 실행에서 전체 발송 경로가 자연스럽게 검증될 예정이다.
+  - 주의: 스케줄 실행은 main에서 돌고 봇 커밋도 main에 쌓인다. ax-job-agent 브랜치에서 작업을 이어가기 전에 `git pull origin main`으로 main의 봇 커밋을 먼저 받아온다.
+  - 주의: 저장소에 60일 동안 활동이 없으면 GitHub가 스케줄 실행을 자동으로 비활성화한다.
 - **막힌 부분 / 확인 필요**: 없음
 
 > ⚠️ 작업할 때마다 이 섹션(현재 상태)을 직접 갱신할 것. Claude Code에게 "PROGRESS.md 업데이트해줘"라고 요청해도 됨.
@@ -57,7 +60,7 @@
 - [x] origin(내 Fork)로 push — `ax-job-agent` 브랜치 신규 생성, upstream 설정
 - [x] STEP 17. GitHub Actions 수동 실행 (workflow_dispatch) — dry_run·실제 실행 모두 성공 (job_id 매칭 실패 0건, 신규 0건으로 안전 종료, 시크릿 미노출)
 - [x] GitHub Secrets 등록 (GEMINI_API_KEY, SLACK_PROD_WEBHOOK_URL, GMAIL_USER, GMAIL_APP_PASSWORD) — `gh secret list`로 4개 등록 확인
-- [ ] STEP 18. GitHub Actions 주간 실행 (cron 추가) ← 다음 단계
+- [x] STEP 18. GitHub Actions 주간 실행 (cron 추가) — 매주 월 09:00 KST(UTC `0 0 * * 1`), 기본 브랜치(main)에서 실행, 스케줄 실행은 항상 실제 발송 모드(dry_run은 수동 실행 전용). 첫 자동 실행: 2026-09-28(월) 09:00 KST 예정
 
 ---
 
@@ -93,6 +96,7 @@
 | 2026-09-23 | 배포 | 커밋 전 정리(STEP 13 이메일 주소 마스킹, requirements.txt 버전 고정 작성) → 17개 파일만 명시적 add·커밋 → 작성자 이메일을 GitHub noreply 주소로 바꿔 amend → `git push -u origin ax-job-agent` | 커밋 6c59eb5 (+3,947줄), 민감정보 grep 8개 항목 모두 없음, 저장소 루트 requirements.txt는 제외. 내 Fork에 ax-job-agent 브랜치 생성 |
 | 2026-09-23 | STEP 17 | job_url→job_id 병합 키 전환 (커밋 06587e3) — GitHub Actions에서만 발생한 listno 불안정 문제(첫 dry_run에서 매칭 실패 2건) 수정. 렌더링 페이지의 모든 카드에서 날짜 추출, checkout@v5·setup-python@v6 업그레이드 | 오프라인 3개 시나리오(차이 없음 / listno 변경 / listno+순서 변경) 모두 매칭 실패 0건·날짜 8/8 검증 + dry_run 재실행으로 매칭 실패 0건 확인. STEP 14 회귀 30/30 |
 | 2026-09-23 | STEP 17 | Playwright 타임아웃 수정 (커밋 c261c06) — 첫 실제 실행이 page.goto의 load 대기 30초 초과로 실패(발송·history 변경 없음) → domcontentloaded + 60초 타임아웃 + 1회 재시도 | 오프라인 4개 케이스(1회차 성공 / goto 타임아웃 후 재시도 성공 / 셀렉터 타임아웃 후 재시도 성공 / 2회 모두 실패 시 에러) 검증, STEP 14 회귀 30/30. dry_run(run 35836348734)·실제 실행(run 35836468808) 모두 성공: 매칭 실패 0건, 신규 0건이라 발송·history 커밋 없음, 시크릿 미노출 |
+| 2026-09-23 | STEP 18 | 워크플로우에 schedule(cron `0 0 * * 1`) 추가, dry_run 조건을 workflow_dispatch일 때만 적용하도록 변경 (커밋 d84e84d, ax-job-agent·main 반영) | YAML 파싱 OK, 이벤트별 분기 시뮬레이션(스케줄 → 항상 `python main.py`) 확인. workflow_dispatch dry_run(run 35836941850) 성공: 매칭 실패 0건, 신규 0건, 시크릿 미노출. main의 워크플로우 active + cron 등록 확인. 첫 자동 실행 2026-09-28(월) 09:00 KST 예정 |
 
 ---
 
