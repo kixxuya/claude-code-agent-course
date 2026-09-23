@@ -1,10 +1,11 @@
 """STEP 03/04/04b: 잡코리아 검색 결과 수집.
 
 - requests(정적 HTML)로 company_name/job_title/career/location/job_url을 파싱한다 (STEP 04 정본).
-- Playwright(렌더링 HTML)로 posted_date/closing_date 두 항목만 뽑아 job_url 기준으로 병합한다 (STEP 04b).
+- Playwright(렌더링 HTML)로 posted_date/closing_date 두 항목만 뽑아 job_id(공고 ID) 기준으로 병합한다 (STEP 04b).
 """
 
 import asyncio
+import re
 import sys
 import warnings
 from concurrent.futures import ThreadPoolExecutor
@@ -25,6 +26,7 @@ ROBOTS_URL = "https://www.jobkorea.co.kr/robots.txt"
 SEARCH_URL_TEMPLATE = "https://www.jobkorea.co.kr/Search/?stext={keyword}"
 CARD_SELECTOR = "div.rounded-2xl.shadow-list.bg-white"
 DEFAULT_LIMIT = 8
+JOB_ID_PATTERN = re.compile(r"GI_Read/(\d+)")
 
 
 def build_search_url(keyword):
@@ -129,24 +131,33 @@ def extract_dates(card):
     return posted_date, closing_date
 
 
-def parse_dates_by_url(rendered_html, limit=DEFAULT_LIMIT):
-    # 렌더링 HTML에서는 날짜 두 항목만 뽑는다. job_url은 merge 키로만 쓴다.
+def extract_job_id(job_url):
+    # 공고 ID(GI_Read/ 뒤 숫자) - analyzer.add_job_id()와 같은 규칙
+    match = JOB_ID_PATTERN.search(job_url or "")
+    return match[1] if match else None
+
+
+def parse_dates_by_job_id(rendered_html):
+    # 렌더링 HTML에서는 날짜 두 항목만 뽑는다. job_id는 merge 키로만 쓴다.
+    # 정적 요청과 몇 초 차이로 목록 순서가 바뀔 수 있어서 상위 N건이 아니라 페이지의 모든 카드를 본다.
     soup = BeautifulSoup(rendered_html, "html.parser")
-    dates_by_url = {}
-    for card in soup.select(CARD_SELECTOR)[:limit]:
+    dates_by_job_id = {}
+    for card in soup.select(CARD_SELECTOR):
         title_a = card.select_one('a[data-sentry-component="Title"]')
-        if title_a is None:
+        job_id = extract_job_id(title_a["href"]) if title_a else None
+        if job_id is None or job_id in dates_by_job_id:
             continue
         posted_date, closing_date = extract_dates(card)
-        dates_by_url[title_a["href"]] = {"posted_date": posted_date, "closing_date": closing_date}
-    return dates_by_url
+        dates_by_job_id[job_id] = {"posted_date": posted_date, "closing_date": closing_date}
+    return dates_by_job_id
 
 
-def merge_dates(jobs, dates_by_url):
-    # job_url을 키로 jobs에 posted_date, closing_date를 추가한다 (jobs를 제자리에서 수정). 매칭 실패 URL 목록을 돌려준다.
+def merge_dates(jobs, dates_by_job_id):
+    # job_id를 키로 jobs에 posted_date, closing_date를 추가한다 (jobs를 제자리에서 수정). 매칭 실패 job_url 목록을 돌려준다.
+    # job_url 전체는 검색 순번(listno=N)이 요청마다 달라질 수 있어 키로 쓰지 않는다 (GitHub Actions에서 2건 매칭 실패 확인)
     unmatched_urls = []
     for job in jobs:
-        dates = dates_by_url.get(job["job_url"])
+        dates = dates_by_job_id.get(extract_job_id(job["job_url"]))
         if dates is None:
             unmatched_urls.append(job["job_url"])
             job["posted_date"] = None
@@ -164,8 +175,7 @@ def fetch_job_list(keyword, limit=DEFAULT_LIMIT):
         raise RuntimeError(f"robots.txt에서 허용되지 않는 경로다: {url}")
 
     jobs = parse_job_cards(fetch_static_html(url), limit=limit)
-    dates_by_url = parse_dates_by_url(fetch_rendered_html(url), limit=limit)
-    unmatched_urls = merge_dates(jobs, dates_by_url)
-    if unmatched_urls:
-        print(f"[crawler] job_url 매칭 실패 {len(unmatched_urls)}건 (날짜 None으로 둠)")
+    dates_by_job_id = parse_dates_by_job_id(fetch_rendered_html(url))
+    unmatched_urls = merge_dates(jobs, dates_by_job_id)
+    print(f"[crawler] job_id 매칭 실패 {len(unmatched_urls)}건" + (" (날짜 None으로 둠)" if unmatched_urls else ""))
     return jobs
