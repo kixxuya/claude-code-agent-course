@@ -7,7 +7,10 @@ on:
         description: "DRY RUN (Gemini 호출·보고서 저장·Gmail/Slack 발송·history 저장 없이 확인만)"
         type: boolean
         default: false
-  # cron(주 1회 자동 실행)은 STEP 18에서 추가한다
+  schedule:
+    # 매주 월요일 09:00 KST (= 00:00 UTC). 기본 브랜치(main)에서 실행되며, 항상 실제 발송 모드로 돈다.
+    # GitHub 부하에 따라 몇 분~수십 분 늦게 시작될 수 있다.
+    - cron: "0 0 * * 1"
 
 permissions:
   contents: write # jobs_history.csv 변경사항을 같은 브랜치에 push하기 위해 필요
@@ -52,8 +55,9 @@ jobs:
           SLACK_PROD_WEBHOOK_URL: ${{ secrets.SLACK_PROD_WEBHOOK_URL }}
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        # dry_run은 수동 실행(workflow_dispatch)에서만 쓴다. 스케줄 실행은 항상 실제 발송 모드.
         run: |
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
             python main.py --dry-run
           else
             python main.py
