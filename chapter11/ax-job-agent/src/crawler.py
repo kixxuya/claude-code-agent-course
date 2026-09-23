@@ -14,6 +14,7 @@ from urllib.robotparser import RobotFileParser
 
 import requests
 from bs4 import BeautifulSoup
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 HEADERS = {
@@ -27,6 +28,7 @@ SEARCH_URL_TEMPLATE = "https://www.jobkorea.co.kr/Search/?stext={keyword}"
 CARD_SELECTOR = "div.rounded-2xl.shadow-list.bg-white"
 DEFAULT_LIMIT = 8
 JOB_ID_PATTERN = re.compile(r"GI_Read/(\d+)")
+RENDER_MAX_ATTEMPTS = 2  # Playwright 타임아웃 시 1회 재시도 (요청은 최대 2회)
 
 
 def build_search_url(keyword):
@@ -94,11 +96,21 @@ def _fetch_rendered_html_in_thread(url):
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             try:
-                page = browser.new_page(user_agent=HEADERS["User-Agent"])
-                page.goto(url, timeout=30_000)  # 요청은 이 1회뿐
-                page.wait_for_selector(CARD_SELECTOR, timeout=15_000)  # 공고 카드 로드 대기
-                page.wait_for_selector(f"{CARD_SELECTOR} >> text=/등록/", timeout=15_000)  # 날짜 렌더링 대기
-                return page.content()
+                for attempt in range(1, RENDER_MAX_ATTEMPTS + 1):
+                    page = browser.new_page(user_agent=HEADERS["User-Agent"])
+                    try:
+                        # "load"(광고·추적 스크립트까지 전부 로드)를 기다리면 느린 리소스 하나 때문에 타임아웃이 난다
+                        # (GitHub Actions 실제 실행에서 30초 초과 확인). 필요한 요소는 아래 wait_for_selector로 기다린다.
+                        page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+                        page.wait_for_selector(CARD_SELECTOR, timeout=15_000)  # 공고 카드 로드 대기
+                        page.wait_for_selector(f"{CARD_SELECTOR} >> text=/등록/", timeout=15_000)  # 날짜 렌더링 대기
+                        return page.content()
+                    except PlaywrightTimeoutError:
+                        if attempt == RENDER_MAX_ATTEMPTS:
+                            raise
+                        print(f"[crawler] Playwright 타임아웃 → 재시도 ({attempt + 1}/{RENDER_MAX_ATTEMPTS})")
+                    finally:
+                        page.close()
             finally:
                 browser.close()
     finally:
