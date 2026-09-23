@@ -8,8 +8,8 @@
 ## 현재 상태 (마지막 업데이트: 2026-09-23)
 
 - **완료된 마지막 STEP**: STEP 16 (로컬 전체 실행 검증) — python main.py 실제 실행 성공 (신규 0건으로 안전 종료). '신규 있음' 흐름은 기존 검증 + 모의 테스트로 커버, 실제 신규 공고가 뜨는 주에 end-to-end 확인 예정
-- **지금 하고 있는 것**: 없음 (배포 단계 시작 대기)
-- **다음에 할 일**: Git 커밋 → origin push → GitHub Secrets 등록 → STEP 17
+- **지금 하고 있는 것**: 없음 (GitHub Secrets 등록 대기)
+- **다음에 할 일**: GitHub Secrets 등록 → STEP 17
 - **막힌 부분 / 확인 필요**: 없음
 
 > ⚠️ 작업할 때마다 이 섹션(현재 상태)을 직접 갱신할 것. Claude Code에게 "PROGRESS.md 업데이트해줘"라고 요청해도 됨.
@@ -52,10 +52,10 @@
 
 ### 배포 단계
 
-- [ ] Git 커밋 (민감정보 미포함 확인 후) ← 다음 단계
-- [ ] origin(내 Fork)로 push
+- [x] Git 커밋 (민감정보 미포함 확인 후) — 6c59eb5, 17개 파일 명시적 add, 민감정보 grep 8개 항목 모두 없음
+- [x] origin(내 Fork)로 push — `ax-job-agent` 브랜치 신규 생성, upstream 설정
 - [ ] STEP 17. GitHub Actions 수동 실행 (workflow_dispatch)
-- [ ] GitHub Secrets 등록 (GEMINI_API_KEY, SLACK_PROD_WEBHOOK_URL, GMAIL_USER, GMAIL_APP_PASSWORD)
+- [ ] GitHub Secrets 등록 (GEMINI_API_KEY, SLACK_PROD_WEBHOOK_URL, GMAIL_USER, GMAIL_APP_PASSWORD) ← 다음 단계
 - [ ] STEP 18. GitHub Actions 주간 실행 (cron 추가)
 
 ---
@@ -89,6 +89,7 @@
 | 2026-09-23 | STEP 14 | 노트북 로직을 src/ 6개 모듈(crawler/preprocess/analyzer/gemini_client/reporter/notifier)로 이동, jobs_history.csv 실제 8건으로 리팩토링 전후 비교, career 셀렉터를 span.flex-shrink-0.text-typo-c1-13로 수정 | 30/30 일치(보고서는 글자 단위 동일), career 렌더링 HTML 8/8·정적 대체본 8/8 일치. 원본 정적 HTML은 STEP 09 response 변수 충돌로 유실(원인 수정). STEP 14-1 재호출 테스트는 중복이라 생략 |
 | 2026-09-23 | STEP 15 | src/ 6개 모듈을 잇는 main.py 작성 (--keyword/--limit/--dry-run, 신규 0건이면 조기 종료, 발송이 모두 성공해야 history 갱신) | 가짜 함수로 분기 4가지 사전 테스트 통과. 사람이 dry-run·실제 모드 실행: 둘 다 신규 0건으로 외부 호출 없이 종료, 실행 모드 로그 정상. jobs_history.csv·보고서 파일 변경 없음 확인 |
 | 2026-09-23 | STEP 16 | python main.py 로컬 실제 실행 | 성공, 신규 0건으로 외부 호출 없이 종료. '신규 있음' 전체 흐름은 강제 재현하지 않음 — 개별 로직 실제 호출 검증(STEP 04/09/10/12/13) + STEP 14 30/30 + main.py 모의 테스트(A~D)로 커버 판단, 실제 신규 공고가 뜨는 주에 end-to-end 확인 예정 |
+| 2026-09-23 | 배포 | 커밋 전 정리(STEP 13 이메일 주소 마스킹, requirements.txt 버전 고정 작성) → 17개 파일만 명시적 add·커밋 → 작성자 이메일을 GitHub noreply 주소로 바꿔 amend → `git push -u origin ax-job-agent` | 커밋 6c59eb5 (+3,947줄), 민감정보 grep 8개 항목 모두 없음, 저장소 루트 requirements.txt는 제외. 내 Fork에 ax-job-agent 브랜치 생성 |
 
 ---
 

@@ -1,0 +1,73 @@
+name: AX Job Agent (chapter11)
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "DRY RUN (Gemini 호출·보고서 저장·Gmail/Slack 발송·history 저장 없이 확인만)"
+        type: boolean
+        default: false
+  # cron(주 1회 자동 실행)은 STEP 18에서 추가한다
+
+permissions:
+  contents: write # jobs_history.csv 변경사항을 같은 브랜치에 push하기 위해 필요
+
+concurrency:
+  group: ax-job-agent # 동시에 두 번 돌면 history가 꼬이므로 한 번에 하나만 실행
+  cancel-in-progress: false
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TZ: Asia/Seoul # 보고서 파일명·기준일을 한국 날짜로 (러너 기본값은 UTC)
+      PYTHONUTF8: "1"
+    defaults:
+      run:
+        working-directory: chapter11/ax-job-agent
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14" # 로컬 .venv와 같은 버전 (requirements.txt 고정 버전 기준)
+          cache: pip
+          cache-dependency-path: chapter11/ax-job-agent/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run pipeline
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SLACK_PROD_WEBHOOK_URL: ${{ secrets.SLACK_PROD_WEBHOOK_URL }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            python main.py --dry-run
+          else
+            python main.py
+          fi
+
+      - name: Commit updated jobs_history.csv
+        # 위 단계가 실패하면(발송 실패 → main.py가 history를 갱신하지 않고 exit 1) 이 단계는 실행되지 않는다
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/processed/jobs_history.csv
+          if git diff --cached --quiet; then
+            echo "jobs_history.csv 변경 없음 (신규 0건 또는 DRY RUN) → 커밋 건너뜀"
+            exit 0
+          fi
+          git commit -m "chapter11: jobs_history.csv 갱신 (GitHub Actions, $(date +%F))"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
